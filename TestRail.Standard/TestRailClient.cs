@@ -462,7 +462,7 @@ namespace TestRail
         {
             var uri = _CreateUri_(_CommandType_.close, _NODE_PLAN_, planID);
 
-            var result = _CallPostEndpoint(uri).Result;
+            var result = _CallTestRailPostEndpoint(uri).Result;
             if (result.WasSuccessful)
             {
                 var json = JObject.Parse(result.Value);
@@ -479,7 +479,7 @@ namespace TestRail
         public bool CloseRun(ulong runID)
         {
             var uri = _CreateUri_(_CommandType_.close, _NODE_RUN_, runID);
-            var result = _CallPostEndpoint(uri).Result;
+            var result = _CallTestRailPostEndpoint(uri).Result;
             if (result.WasSuccessful)
             {
                 var json = JObject.Parse(result.Value);
@@ -977,28 +977,29 @@ namespace TestRail
         /// <param name="uri">uri of the endpoint</param>
         /// <param name="postParams">post parameters alternating between keys and values</param>
         /// <returns>result of the call</returns>
-        private async Task<CommandResult> _CallPostEndpoint(string uri, JObject json = null)
+        private async Task<CommandResult> _CallTestRailPostEndpoint(string uri, JObject json = null)
         {
-            string postContent = null;
-            if (null != json)
+            HttpContent postContent = null;
+            if (json != null)
             {
-                postContent = json.ToString();
+				postContent = new StringContent(json.ToString(), Encoding.UTF8, "application/json");
             }
-            OnHTTPRequestSent(this, new HTTPRequestSentEventArgs(HttpMethod.Post, new Uri(uri), postContent));
+            OnHTTPRequestSent(this, new HTTPRequestSentEventArgs(HttpMethod.Post, new Uri(uri), json.ToString()));
 
             CommandResult cr;
             try
             {
 				// receive the response
-			
-                var responseDataStream = response.GetResponseStream();
-                var reader = new StreamReader(responseDataStream);
-                var responseFromServer = reader.ReadToEnd();
-                reader.Dispose();
+				var response = await _Client.PostAsync(uri, postContent);
+				var responseContent = response.Content;
                 response.Dispose();
-                cr = new CommandResult(response.StatusCode == HttpStatusCode.OK, responseFromServer);
+                cr = new CommandResult(response.StatusCode == HttpStatusCode.OK, responseContent.ToString());
             }
-            catch (Exception e) { cr = new CommandResult(false, e.ToString()); }
+            catch (Exception e)
+			{
+				cr = new CommandResult(false, e.ToString());
+			}
+			
             if (!cr.WasSuccessful)
             {
                 OnOperationFailed(this, $"HTTP RESPONSE: {cr.Value}");
@@ -1022,7 +1023,7 @@ namespace TestRail
 
             try
             {
-                var result = _CallPostEndpoint(uri, jsonParams);
+				var result = _CallTestRailPostEndpoint(uri, jsonParams).Result;
                 wasSuccessful = result.WasSuccessful;
                 if (wasSuccessful)
                 {
